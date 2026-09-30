@@ -22,6 +22,9 @@ build/
 .coverage.*
 htmlcov/
 
+# --- pytestのtmp_path生成先(%TEMP%権限問題の個別回避、common/mping/config_backup等と同様) ---
+.pytest_tmp/
+
 # --- このツールが例外的に個別venvを持つ場合 ---
 .venv/
 
@@ -29,3 +32,8 @@ htmlcov/
 .env
 .env.*
 *.local
+
+# --- 実機コンフィグの検証用サンプル(証明書の秘密鍵・実IP等を含む可能性があるため、
+#     このリポジトリ(既定でPublic)にはコミットしない。各自のtests/fg_config_sample/に
+#     ローカル配置して使う想定。テストは無ければ自動skipする) ---
+tests/fg_config_sample/

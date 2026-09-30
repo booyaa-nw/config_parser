@@ -1,0 +1,45 @@
+// FortiOS (ftnt/fos) config file grammar -- draft (たたき台)
+//
+// 方針(2026-09-13 合意事項): 文法自体は config/edit/set/unset/next/end の
+// 構造とクォート処理程度に留め、カテゴリ名の正規化・集約ロジックは
+// 事後処理(Transformer)側の Python で行う。
+//
+// 実サンプル(7.2_multivdom.conf / 7.2_novdom.conf)を突き合わせて分かった、
+// インデントには意味がない(整形用の飾りに過ぎない)ため、空白/タブは
+// 単純に無視し、"改行"だけを文単位の区切りとして扱う。
+//
+// 既知の実データ特有のクセ: マルチvdom構成のコンフィグ本体は
+//   config vdom
+//   edit root
+//       <実際のカテゴリ設定...>
+//   end
+// のように、"edit"に対応する"next"が省略され、外側の"config vdom"を
+// 閉じる"end"がその両方を兼ねる形で出力される(vdom一覧を宣言する
+// 冒頭の"config vdom / edit X / next / ... / end"とは異なる)。
+// これを個別に特殊扱いする代わりに、edit_stmt の "next" を単純に
+// 省略可能にすることで、文法を汎用に保ったまま両方の形を受理できる。
+
+start: header_line* stmt*
+
+header_line: HEADER_LINE _NL
+
+stmt: config_stmt
+    | edit_stmt
+    | set_stmt
+    | unset_stmt
+
+config_stmt: "config" name_part+ _NL stmt* "end" _NL
+edit_stmt:   "edit" value _NL stmt* ["next" _NL]
+set_stmt:    "set" BARE value+ _NL
+unset_stmt:  "unset" BARE _NL
+
+name_part: value
+value: STRING | BARE
+
+HEADER_LINE: /#[^\r\n]*/
+STRING: /"(\\.|[^"\\])*"/
+BARE: /[^\s"]+/
+
+_NL: /(\r?\n)+/
+
+%ignore /[ \t]+/

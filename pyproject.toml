@@ -1,9 +1,18 @@
 [project]
 name = "config_parser"
 version = "0.1.0"
-description = ""
+description = "NW機器コンフィグをExcelパラメータシートへ変換するツール(当面はFortiOS(FortiGate/MSW)のみ)"
+readme = "README.md"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "lark>=1.1",
+    "openpyxl>=3.1",
+    "common",
+    "rich>=13.0",
+]
+
+[tool.uv.sources]
+common = { workspace = true }
 
 [project.scripts]
 config_parser = "config_parser.cli:main"
@@ -14,3 +23,15 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/config_parser"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+# Windows環境で `%TEMP%\pytest-of-<user>` にアクセス権限の問題があり
+# (common/mping/config_backup等で確認済みの既知問題と同一)、
+# tmp_path系フィクスチャの生成先をリポジトリ直下の作業用ディレクトリに固定する。
+addopts = "--basetemp=.pytest_tmp"
