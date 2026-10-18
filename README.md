@@ -5,14 +5,14 @@ dictに変換し、バージョン/モデル差分吸収・デフォルト値補
 シート(・JSON)へ出力するツール。設計方針・決定事項は Claude Project の
 `architecture/config-parser-design.md` を参照。
 
-## 実装状況(2026-09-26時点)
+## 実装状況(2026-10-02時点)
 
 パイプラインの4段階(Lark Parse → Materialize → Format(カテゴリ単位) → Excel/JSON
 Export)に加え、CLIエントリポイント(`config_parser fgt <file>`)まで実装・実データ
-検証済み。実装済みカテゴリは11個(下記モジュール構成を参照)。`system_interface`は
-こうぢさんの指示により今回は対象外、`firewall_proxy-policy`と動的ルーティング
-(router bgp/ospf/rip/isis/multicast等)は実サンプルが無い/スコープ確定していない
-ため見送り(詳細は`architecture/config-parser-design.md`の「未確定・要相談」参照)。
+検証済み。実装済みカテゴリは12個(下記モジュール構成を参照)。`firewall_proxy-policy`
+と動的ルーティング(router bgp/ospf/rip/isis/multicast等)は実サンプルが無い/スコープ
+確定していないため見送り(詳細は`architecture/config-parser-design.md`の
+「未確定・要相談」参照)。
 
 ## モジュール構成
 
@@ -44,9 +44,12 @@ Export)に加え、CLIエントリポイント(`config_parser fgt <file>`)まで
   カット。他スクリプトから使う場合はこれをそのままimportすればよい(下記参照)。
 - `src/config_parser/cli.py` — CLIエントリポイント。`config_parser fgt <file...>`
   (config_backup/net_configと同じ、サブコマンドで機器ファミリーを指定する方式)。
-- `src/config_parser/ftnt/fos/formatters/` — 実装済み11 Formatter:
+- `src/config_parser/ftnt/fos/formatters/` — 実装済み12 Formatter:
   `system_global`(singleton/virtical)、`system_ha`(composite、HA管理IF一覧の
-  サブテーブル込み)、`firewall_address`(simple、typeごとの派生アドレス表示)、
+  サブテーブル込み)、`system_interface`(simple。`config global`配下に全vdom分が
+  まとまっている特殊構造のためFormatter自身がエントリの`vdom`キーで絞り込む。
+  vlanid設定時の`type: vlan`派生、ip/cidr変換、IPv6サブブロックは今回スコープ外)、
+  `firewall_address`(simple、typeごとの派生アドレス表示)、
   `firewall_addrgrp`、`firewall_ippool`、`firewall_vip`、`firewall_vipgrp`、
   `firewall_service_custom`、`firewall_service_group`、`firewall_policy`
   (internet-service系のsrcaddr/dstaddr override、identity-basedのgroups/users含む)、
@@ -109,11 +112,11 @@ print(result.hostname, result.excel_path, result.json_paths)
 - `lark` — コンフィグのパース。
 - `openpyxl` — Excel出力。
 - `rich` — CLIの結果テーブル表示(config_backup/net_configと同じ)。
-- `common`(`tools/common`、uv workspace依存) — `router_static.py`が
-  `common.iptools.calc.ipv4.dotted_mask_to_cidr()`(サブネットマスク→CIDR変換)を
-  使用。旧実装(`booyaa_old`)は`booyaa.ipcalc.ipv4.IPv4.ipmask2cidr()`を使っていたが、
-  現行モノレポではこの処理は`tools/common`側に移設済み(`operations/tool-registry.md`
-  参照)。`system_interface`を実装する際も同じ関数を使う想定。
+- `common`(`tools/common`、uv workspace依存) — `router_static.py`・
+  `system_interface.py`が`common.iptools.calc.ipv4.dotted_mask_to_cidr()`
+  (サブネットマスク→CIDR変換)を使用。旧実装(`booyaa_old`)は
+  `booyaa.ipcalc.ipv4.IPv4.ipmask2cidr()`を使っていたが、現行モノレポでは
+  この処理は`tools/common`側に移設済み(`operations/tool-registry.md`参照)。
 
 ## 検証
 
@@ -123,15 +126,17 @@ print(result.hostname, result.excel_path, result.json_paths)
 (無い場合、該当するテスト・検証スクリプトは自動的にskip/エラーになる)。
 
 - `tests/test_parse.py` — 文法・パーサーのpytestテスト(12件)。
-- `tests/test_pipeline.py` — CLI/pipeline/JSON出力のpytestテスト(10件)。
+- `tests/test_pipeline.py` — CLI/pipeline/JSON出力のpytestテスト(11件、
+  system_interfaceのvdom振り分け検証含む)。
   ```
   uv run pytest tools/config_parser -v
   ```
 - `validate_firewall_address.py` / `validate_export.py` / `validate_more_formatters.py`
-  / `validate_new_formatters.py` — Formatter/Excel出力を実サンプルに対して実際に
-  動かして確認する検証スクリプト(pytestの単体テストではなく手動実行用)。
+  / `validate_new_formatters.py` / `validate_system_interface.py` — Formatter/Excel
+  出力を実サンプルに対して実際に動かして確認する検証スクリプト(pytestの単体テストで
+  はなく手動実行用)。
   ```
-  uv run --project tools/config_parser python tools/config_parser/validate_new_formatters.py
+  uv run --project tools/config_parser python tools/config_parser/validate_system_interface.py
   ```
   出力される.xlsx/.jsonは`tmp/`配下(`.gitignore`で除外済み)に書き出される。
 
@@ -142,7 +147,9 @@ print(result.hostname, result.excel_path, result.json_paths)
   実機のexplicit proxyサンプルが手に入り次第対応。
 - 動的ルーティング(`router bgp`/`ospf`/`rip`/`isis`/`multicast`等): 具体的な
   依頼が無く複雑度も高いため今回はスコープ外。
-- `system_interface`: 今回は対象外(こうぢさんの指示)。`router_static.py`と同じ
-  `common.iptools.calc.ipv4.dotted_mask_to_cidr()`を使う想定であることは
-  設計メモに記録済み。
+- `system_interface`の`config ipv6`サブブロック(ip6-mode/ip6-allowaccess等)は
+  今回スコープ外(IPv4のみ実装)。IPv6設定の確認が必要になった時点で追加検討。
+- いくつかのswitch-controller系トグル項目(`switch-controller-igmp-snooping`等)の
+  デフォルト値は実データで両方向(enable/disable)を確認できておらず、FortiOSの
+  一般的な仕様に基づく推測値である点に留意(`system_interface.py`のコメント参照)。
 - 詳細は Claude Project の `architecture/config-parser-design.md` を参照。

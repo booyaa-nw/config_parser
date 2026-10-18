@@ -124,7 +124,29 @@ def test_all_new_categories_registered():
         "FirewallVipgrp",
         "FirewallServiceCustom",
         "FirewallServiceGroup",
+        "SystemInterface",
     } <= names
+
+
+def test_system_interface_split_by_vdom_via_internal_vdom_key(tmp_path):
+    # system_interfaceは`config global`配下に全vdom分がまとまっており、
+    # 他カテゴリ(get_vdom_sectionで既にvdom単位に分かれたデータを取る方式)
+    # とは異なり、Formatter自身がエントリの`vdom`キーで絞り込む。
+    # multivdomサンプルでroot/ext-vdomにそれぞれ正しく振り分けられ、
+    # 重複が無いことを確認する。
+    result = process_file(str(MULTIVDOM), export_dir=str(tmp_path), json_only=True)
+
+    root_path = next(p for p in result.json_paths if p.stem.endswith("_root"))
+    ext_path = next(p for p in result.json_paths if p.stem.endswith("_ext-vdom"))
+    root_payload = json.loads(root_path.read_text(encoding="utf-8"))
+    ext_payload = json.loads(ext_path.read_text(encoding="utf-8"))
+
+    assert "interface" in root_payload["categories"]
+    assert "interface" in ext_payload["categories"]
+    root_names = {r["name"][0] for r in root_payload["categories"]["interface"]["records"]}
+    ext_names = {r["name"][0] for r in ext_payload["categories"]["interface"]["records"]}
+    assert root_names.isdisjoint(ext_names)
+    assert "wan1" in root_names
 
 
 def test_cli_parses_fgt_subcommand():
