@@ -5,11 +5,11 @@ dictに変換し、バージョン/モデル差分吸収・デフォルト値補
 シート(・JSON)へ出力するツール。設計方針・決定事項は Claude Project の
 `architecture/config-parser-design.md` を参照。
 
-## 実装状況(2026-10-02時点)
+## 実装状況(2026-10-22時点)
 
 パイプラインの4段階(Lark Parse → Materialize → Format(カテゴリ単位) → Excel/JSON
 Export)に加え、CLIエントリポイント(`config_parser fgt <file>`)まで実装・実データ
-検証済み。実装済みカテゴリは12個(下記モジュール構成を参照)。`firewall_proxy-policy`
+検証済み。実装済みカテゴリは14個(下記モジュール構成を参照)。`firewall_proxy-policy`
 と動的ルーティング(router bgp/ospf/rip/isis/multicast等)は実サンプルが無い/スコープ
 確定していないため見送り(詳細は`architecture/config-parser-design.md`の
 「未確定・要相談」参照)。
@@ -44,7 +44,7 @@ Export)に加え、CLIエントリポイント(`config_parser fgt <file>`)まで
   カット。他スクリプトから使う場合はこれをそのままimportすればよい(下記参照)。
 - `src/config_parser/cli.py` — CLIエントリポイント。`config_parser fgt <file...>`
   (config_backup/net_configと同じ、サブコマンドで機器ファミリーを指定する方式)。
-- `src/config_parser/ftnt/fos/formatters/` — 実装済み12 Formatter:
+- `src/config_parser/ftnt/fos/formatters/` — 実装済み14 Formatter:
   `system_global`(singleton/virtical)、`system_ha`(composite、HA管理IF一覧の
   サブテーブル込み)、`system_interface`(simple。`config global`配下に全vdom分が
   まとまっている特殊構造のためFormatter自身がエントリの`vdom`キーで絞り込む。
@@ -53,7 +53,11 @@ Export)に加え、CLIエントリポイント(`config_parser fgt <file>`)まで
   `firewall_addrgrp`、`firewall_ippool`、`firewall_vip`、`firewall_vipgrp`、
   `firewall_service_custom`、`firewall_service_group`、`firewall_policy`
   (internet-service系のsrcaddr/dstaddr override、identity-basedのgroups/users含む)、
-  `router_static`(blackhole/sdwan-zoneの優先順位、サブネットマスク→CIDR変換)。
+  `router_static`(blackhole/sdwan-zoneの優先順位、サブネットマスク→CIDR変換)、
+  `vpn_ipsec_phase1`/`vpn_ipsec_phase2`(旧`ipsec_vpn`。phase1/phase2は1シートに
+  合成せず別シートにし、phase2側の`phase1name`列で突合せる方式。phase2の
+  `src`/`dst`はaddr-typeに応じて`-name`/`-subnet`から派生。詳細は両ファイルの
+  ヘッダコメントおよびpsksecretを表示列から除外した理由を参照)。
 
 ## CLIの使い方
 
@@ -126,17 +130,17 @@ print(result.hostname, result.excel_path, result.json_paths)
 (無い場合、該当するテスト・検証スクリプトは自動的にskip/エラーになる)。
 
 - `tests/test_parse.py` — 文法・パーサーのpytestテスト(12件)。
-- `tests/test_pipeline.py` — CLI/pipeline/JSON出力のpytestテスト(11件、
-  system_interfaceのvdom振り分け検証含む)。
+- `tests/test_pipeline.py` — CLI/pipeline/JSON出力のpytestテスト(12件、
+  system_interfaceのvdom振り分け・vpn_ipsec phase1/phase2の突合せ検証含む)。
   ```
   uv run pytest tools/config_parser -v
   ```
 - `validate_firewall_address.py` / `validate_export.py` / `validate_more_formatters.py`
-  / `validate_new_formatters.py` / `validate_system_interface.py` — Formatter/Excel
-  出力を実サンプルに対して実際に動かして確認する検証スクリプト(pytestの単体テストで
-  はなく手動実行用)。
+  / `validate_new_formatters.py` / `validate_system_interface.py` / `validate_vpn_ipsec.py`
+  — Formatter/Excel出力を実サンプルに対して実際に動かして確認する検証スクリプト
+  (pytestの単体テストではなく手動実行用)。
   ```
-  uv run --project tools/config_parser python tools/config_parser/validate_system_interface.py
+  uv run --project tools/config_parser python tools/config_parser/validate_vpn_ipsec.py
   ```
   出力される.xlsx/.jsonは`tmp/`配下(`.gitignore`で除外済み)に書き出される。
 
@@ -152,4 +156,11 @@ print(result.hostname, result.excel_path, result.json_paths)
 - いくつかのswitch-controller系トグル項目(`switch-controller-igmp-snooping`等)の
   デフォルト値は実データで両方向(enable/disable)を確認できておらず、FortiOSの
   一般的な仕様に基づく推測値である点に留意(`system_interface.py`のコメント参照)。
+- `vpn_ipsec_phase1`/`vpn_ipsec_phase2`: 実サンプルがVPNウィザードで作成した
+  dialup接続2件のみのため、拠点間(static)接続の`remote-gw`、phase2の
+  `src-addr-type`/`dst-addr-type`が`subnet`型の場合の実際の値、`range`/`ip`等
+  他のaddr-type分岐は未検証(FortiOSの一般的な仕様に基づく実装、または未対応)。
+  また`psksecret`(暗号化済みPSK)はセキュリティ上の判断で表示列から除外して
+  いる。実機の拠点間接続サンプルが手に入り次第、あらためて確認・拡張すること
+  (詳細は`vpn_ipsec_phase1.py`/`vpn_ipsec_phase2.py`のコメント参照)。
 - 詳細は Claude Project の `architecture/config-parser-design.md` を参照。

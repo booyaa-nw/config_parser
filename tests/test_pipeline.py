@@ -31,6 +31,9 @@ from config_parser.ftnt.fos.parse import parse_config_file
 SAMPLE_DIR = Path(__file__).parent / "fg_config_sample"
 NOVDOM = SAMPLE_DIR / "FG_7.6_config01.conf"
 MULTIVDOM = SAMPLE_DIR / "FG_7.2_config01_vdom.conf"
+# vpn ipsec(phase1/phase2)設定を含むのはFG_7.6系サンプルのみ(FG_7.2系には
+# 該当コンフィグが無い)。multivdomかつipsec設定ありのサンプルとして使う。
+IPSEC_MULTIVDOM = SAMPLE_DIR / "FG_7.6_config01_vdom.conf"
 
 pytestmark = pytest.mark.skipif(
     not (NOVDOM.exists() and MULTIVDOM.exists()),
@@ -125,6 +128,8 @@ def test_all_new_categories_registered():
         "FirewallServiceCustom",
         "FirewallServiceGroup",
         "SystemInterface",
+        "VpnIpsecPhase1",
+        "VpnIpsecPhase2",
     } <= names
 
 
@@ -147,6 +152,33 @@ def test_system_interface_split_by_vdom_via_internal_vdom_key(tmp_path):
     ext_names = {r["name"][0] for r in ext_payload["categories"]["interface"]["records"]}
     assert root_names.isdisjoint(ext_names)
     assert "wan1" in root_names
+
+
+def test_vpn_ipsec_phase1_phase2_only_in_configured_vdom(tmp_path):
+    # vpn ipsec phase1/phase2-interfaceは、system_interfaceとは異なり
+    # get_vdom_section()で既にvdom単位に分かれた生データを使う通常パターン
+    # (他のvdom個別カテゴリと同じ)。IPSEC_MULTIVDOMサンプルはrootにのみ
+    # ipsec vpn設定があり、ext-vdomには無いため、root側のJSONにだけ
+    # ipsec_phase1/ipsec_phase2カテゴリが出現し、ext-vdom側には出現しない
+    # (空カテゴリのシート/キーを作らない仕様)ことを確認する。
+    result = process_file(str(IPSEC_MULTIVDOM), export_dir=str(tmp_path), json_only=True)
+
+    root_path = next(p for p in result.json_paths if p.stem.endswith("_root"))
+    ext_path = next(p for p in result.json_paths if p.stem.endswith("_ext-vdom"))
+    root_payload = json.loads(root_path.read_text(encoding="utf-8"))
+    ext_payload = json.loads(ext_path.read_text(encoding="utf-8"))
+
+    assert "ipsec_phase1" in root_payload["categories"]
+    assert "ipsec_phase2" in root_payload["categories"]
+    assert "ipsec_phase1" not in ext_payload["categories"]
+    assert "ipsec_phase2" not in ext_payload["categories"]
+
+    phase1_names = {r["name"][0] for r in root_payload["categories"]["ipsec_phase1"]["records"]}
+    phase2_by_name = {r["name"][0]: r for r in root_payload["categories"]["ipsec_phase2"]["records"]}
+    assert phase1_names == {"test_ipsec1", "test_remote01"}
+    # phase2の`phase1name`でphase1側トンネル名と突合せできること
+    for name, record in phase2_by_name.items():
+        assert record["phase1name"] == [name]
 
 
 def test_cli_parses_fgt_subcommand():

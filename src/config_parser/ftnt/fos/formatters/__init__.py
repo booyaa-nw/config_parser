@@ -20,6 +20,12 @@
 # 2026-10-02追記: system_interfaceを追加(実データで検証済み、
 # architecture/config-parser-design.md決定事項12参照)。`config ipv6`
 # サブブロックの表示は今回スコープ外(IPv4のみ)。
+#
+# 2026-10-22追記: vpn_ipsec_phase1/vpn_ipsec_phase2を追加(旧`ipsec_vpn`、
+# 実データで検証済み、architecture/config-parser-design.md決定事項13参照)。
+# 旧booya_config_parserの`export/excel.py`にあった
+# `category == 'ipsec_vpn': continue`相当のスキップは、本プロジェクトでは
+# FORMATTERSに含めないだけで自動的に表現される。
 from config_parser.ftnt.fos.formatters.firewall_address import FirewallAddress
 from config_parser.ftnt.fos.formatters.firewall_addrgrp import FirewallAddrgrp
 from config_parser.ftnt.fos.formatters.firewall_ippool import FirewallIppool
@@ -32,6 +38,8 @@ from config_parser.ftnt.fos.formatters.router_static import RouterStatic
 from config_parser.ftnt.fos.formatters.system_global import SystemGlobal
 from config_parser.ftnt.fos.formatters.system_ha import SystemHa
 from config_parser.ftnt.fos.formatters.system_interface import SystemInterface
+from config_parser.ftnt.fos.formatters.vpn_ipsec_phase1 import VpnIpsecPhase1
+from config_parser.ftnt.fos.formatters.vpn_ipsec_phase2 import VpnIpsecPhase2
 
 FORMATTERS = [
     SystemGlobal(),
@@ -46,4 +54,6 @@ FORMATTERS = [
     FirewallServiceGroup(),
     FirewallPolicy(),
     RouterStatic(),
+    VpnIpsecPhase1(),
+    VpnIpsecPhase2(),
 ]
