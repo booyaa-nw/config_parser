@@ -181,6 +181,20 @@ def test_vpn_ipsec_phase1_phase2_only_in_configured_vdom(tmp_path):
         assert record["phase1name"] == [name]
 
 
+def test_vpn_ipsec_excel_combined_into_one_sheet(tmp_path):
+    # vpn_ipsec_phase1/phase2は、JSON出力は従来どおり別カテゴリのまま
+    # (上のtest_vpn_ipsec_phase1_phase2_only_in_configured_vdomで確認済み)
+    # だが、Excel出力だけはこうぢさん依頼の例外レイアウト(paired_vertical)
+    # で1シートに統合される(core/excel/writer.py・layouts.py参照)。
+    # "ipsec_phase1"/"ipsec_phase2"という別々のシートが2つできるのではなく、
+    # excel_sheet_group("ipsec_vpn")の1シートだけが作られることを確認する。
+    result = process_file(str(IPSEC_MULTIVDOM), export_dir=str(tmp_path))
+    wb = load_workbook(result.excel_path)
+
+    ipsec_sheets = [name for name in wb.sheetnames if "ipsec" in name]
+    assert ipsec_sheets == ["root ipsec_vpn"]
+
+
 def test_cli_parses_fgt_subcommand():
     parser = build_parser()
     args = parser.parse_args(["fgt", "a.conf", "b.conf", "--json", "--json-dir", "out/json"])

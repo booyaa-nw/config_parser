@@ -13,6 +13,10 @@ VPNウィザードで作成したdialup接続2件: test_ipsec1, test_remote01)�
   デフォルト)のエントリは `src-subnet`/`dst-subnet`のデフォルト値から
   "0.0.0.0/0.0.0.0" が組み立てられること。
 - phase2の`phase1name`で対応するphase1トンネル名と突合せできること。
+- 【2026-10-22追記】Excel出力側の例外レイアウト(こうぢさん依頼、
+  `ipsec_vpn_image.xlsx`準拠): phase1/phase2が1シート("<vdom> ipsec_vpn")
+  に統合され、phase1トンネルが列方向に並び、対応するphase2がその下に
+  積まれること(JSON側のカテゴリ分割は従来どおり変更無し)。
 
 実行方法: `uv run --project tools/config_parser python tools/config_parser/validate_vpn_ipsec.py`
 """
@@ -24,6 +28,8 @@ from pathlib import Path
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT.parent / "common" / "src"))
 sys.path.insert(0, str(ROOT / "src"))
+
+from openpyxl import load_workbook  # noqa: E402
 
 from config_parser.ftnt.fos import process_file  # noqa: E402
 
@@ -131,6 +137,47 @@ def main():
 
         print("OK: ipsec vpn設定ありサンプル(FG_7.6系2件)でphase1/phase2ともに"
               "キー集合一致・phase1name突合せ・src/dst派生ロジックを確認")
+
+        # 3. Excel出力側の例外レイアウト(こうぢさん依頼)の確認。
+        #    phase1/phase2が別シートにならず、1シート("<vdom> ipsec_vpn")に
+        #    統合されていること、phase1トンネルが列方向(A/B, C/D, ...)に
+        #    並び、対応するphase2がその下に積まれていることを確認する。
+        for sample in IPSEC_SAMPLES:
+            result = process_file(str(sample), export_dir=str(tmp))
+            wb = load_workbook(result.excel_path)
+
+            # novdomは単に"ipsec_vpn"、multivdomは"root ipsec_vpn"になる
+            # (他カテゴリのシート名規則と同じ、vdom名はmultivdomの時だけ
+            # 前置きされる)。どちらにせよ"ipsec"を含むシートは1つだけ。
+            ipsec_sheets = [name for name in wb.sheetnames if "ipsec" in name]
+            assert len(ipsec_sheets) == 1, (sample, wb.sheetnames)
+            ws = wb[ipsec_sheets[0]]
+
+            phase1_title_rows = [
+                r for r in range(1, ws.max_row + 1)
+                if ws.cell(row=r, column=1).value and "ipsec_phase1" in str(ws.cell(row=r, column=1).value)
+            ]
+            assert len(phase1_title_rows) == 1, (sample, phase1_title_rows)
+            phase1_row = phase1_title_rows[0]
+            # phase1は列方向(A/B=test_ipsec1, C/D=test_remote01の
+            # いずれかの順)に並び、見出し行の2行下(見出し→1行空け→データ)の
+            # 先頭フィールドは"name"であること。
+            data_row = phase1_row + 2
+            assert ws.cell(row=data_row, column=1).value == "name"
+            assert ws.cell(row=data_row, column=3).value == "name"
+            assert {ws.cell(row=data_row, column=2).value, ws.cell(row=data_row, column=4).value} \
+                == {"test_ipsec1", "test_remote01"}
+
+            # phase2の見出し行(値は実データに依存するため、行番号自体は
+            # 固定せず見出しがどこかに1箇所だけあることを確認する)。
+            phase2_title_rows = [
+                r for r in range(1, ws.max_row + 1)
+                if ws.cell(row=r, column=1).value and "ipsec_phase2" in str(ws.cell(row=r, column=1).value)
+            ]
+            assert len(phase2_title_rows) == 1, (sample, phase2_title_rows)
+
+        print("OK: Excel出力がphase1/phase2を1シート('<vdom> ipsec_vpn')に"
+              "統合し、phase1を列方向に並べていることを確認")
 
     print("ALL CHECKS PASSED")
 

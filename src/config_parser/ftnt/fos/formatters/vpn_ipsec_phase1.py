@@ -16,6 +16,25 @@
 # 対応するかはそちらで追える(firewall_vip/vipgrpのような「関連カテゴリは
 # 別シートだがキーで突合せ可能」という既存パターンと同じ考え方)。
 #
+# **2026-10-22追記(Excelレイアウトの例外対応)**: 上記の「別シート」方針に
+# ついて、こうぢさんから実際の利用シーンに合わせた例外レイアウトの依頼が
+# あり対応した(サンプル: `ipsec_vpn_image.xlsx`)。phase1/phase2は
+# JSON出力・カテゴリとしては従来どおり独立([`sheetname`]は
+# "ipsec_phase1"/"ipsec_phase2"のまま=JSON側のキーは不変・既存テストにも
+# 影響なし)だが、**Excel出力に限り1シートに統合**し、phase1トンネルを
+# 列方向に並べ(=`virtical`と同じ「フィールド=行、レコード=列」表示)、
+# その直下に対応する`phase2`レコードを縦に積んで表示する専用レイアウト
+# (`paired_vertical`/`vpn_ipsec_phase2.py`側の`paired_vertical_child`)を
+# `core/excel/layouts.render_paired_vertical_group()`に新設した。
+# `__layout__`の`excel_sheet_group`(両ファイルとも"ipsec_vpn"で共通)が
+# Excel側だけの結合キーで、`core/excel/writer.py`がこのキーが一致する
+# 連続したFormatterをグルーピングして1シートにまとめる(JSON出力の
+# `sheetname`キーとは完全に分離しているため、JSON側のカテゴリ分割には
+# 影響しない)。`link_key`("name"/"phase1name")は、phase1の列の下に
+# どのphase2レコード群を積むかを決める突合せキー。詳細は
+# `architecture/config-parser-design.md`決定事項14、
+# `core/excel/layouts.py`のコメントを参照。
+#
 # 実データ検証(2026-10-22): `tests/fg_config_sample/FG_7.6_config01[_vdom].conf`
 # (novdom/vdom各1件、どちらもVPNウィザードで作成したdialup接続2件、
 # FG_7.2系サンプルにはvpn ipsec設定自体が存在しない)。rootのみに
@@ -49,26 +68,36 @@ from config_parser.core.formatter_base import CategoryFormatter
 
 class VpnIpsecPhase1(CategoryFormatter):
     field_names = {
-        "__layout__":          {"layout": "simple", "sheetname": "ipsec_phase1", "global": False},
-        "name":                {"width": 25, "default_value": []},
-        "type":                {"width": 10, "default_value": ["static"]},
-        "interface":           {"width": 15, "default_value": []},
-        "remote-gw":           {"width": 20, "default_value": []},
-        "ike-version":         {"width": 6,  "default_value": ["1"]},
-        "peertype":            {"width": 10, "default_value": ["any"]},
-        "proposal":            {"width": 35, "default_value": []},
-        "dhgrp":               {"width": 15, "default_value": ["14"]},
-        "net-device":          {"width": 10, "default_value": ["disable"]},
-        "mode-cfg":            {"width": 10, "default_value": ["disable"]},
-        "eap":                 {"width": 8,  "default_value": ["disable"]},
-        "transport":           {"width": 8,  "default_value": ["auto"]},
-        "ipv4-start-ip":       {"width": 16, "default_value": []},
-        "ipv4-end-ip":         {"width": 16, "default_value": []},
-        "dns-mode":            {"width": 8,  "default_value": ["manual"]},
-        "ipv4-split-include":  {"width": 25, "default_value": []},
-        "save-password":       {"width": 10, "default_value": ["disable"]},
-        "wizard-type":         {"width": 20, "default_value": []},
-        "comments":            {"width": 35, "default_value": []},
+        "__layout__": {
+            "layout": "paired_vertical",
+            # JSON出力(core/json_export.py)側のカテゴリキーは従来どおり
+            # "ipsec_phase1"(変更なし)。Excel出力のシート統合キーだけ
+            # excel_sheet_groupで別途持つ(上記ヘッダコメント参照)。
+            "sheetname": "ipsec_phase1",
+            "excel_sheet_group": "ipsec_vpn",
+            "global": False,
+            "header_width": 25, "value_width": 50,
+            "link_key": "name",
+        },
+        "name":                {"default_value": []},
+        "type":                {"default_value": ["static"]},
+        "interface":           {"default_value": []},
+        "remote-gw":           {"default_value": []},
+        "ike-version":         {"default_value": ["1"]},
+        "peertype":            {"default_value": ["any"]},
+        "proposal":            {"default_value": []},
+        "dhgrp":               {"default_value": ["14"]},
+        "net-device":          {"default_value": ["disable"]},
+        "mode-cfg":            {"default_value": ["disable"]},
+        "eap":                 {"default_value": ["disable"]},
+        "transport":           {"default_value": ["auto"]},
+        "ipv4-start-ip":       {"default_value": []},
+        "ipv4-end-ip":         {"default_value": []},
+        "dns-mode":            {"default_value": ["manual"]},
+        "ipv4-split-include":  {"default_value": []},
+        "save-password":       {"default_value": ["disable"]},
+        "wizard-type":         {"default_value": []},
+        "comments":            {"default_value": []},
     }
 
     # 生コンフィグ側にしか存在しない、派生計算専用のキー(表示列ではないのでfield_namesには入れない)

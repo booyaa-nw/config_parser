@@ -54,10 +54,14 @@ Export)に加え、CLIエントリポイント(`config_parser fgt <file>`)まで
   `firewall_service_custom`、`firewall_service_group`、`firewall_policy`
   (internet-service系のsrcaddr/dstaddr override、identity-basedのgroups/users含む)、
   `router_static`(blackhole/sdwan-zoneの優先順位、サブネットマスク→CIDR変換)、
-  `vpn_ipsec_phase1`/`vpn_ipsec_phase2`(旧`ipsec_vpn`。phase1/phase2は1シートに
-  合成せず別シートにし、phase2側の`phase1name`列で突合せる方式。phase2の
-  `src`/`dst`はaddr-typeに応じて`-name`/`-subnet`から派生。詳細は両ファイルの
-  ヘッダコメントおよびpsksecretを表示列から除外した理由を参照)。
+  `vpn_ipsec_phase1`/`vpn_ipsec_phase2`(旧`ipsec_vpn`。**JSON出力は別カテゴリ**
+  のまま、phase2側の`phase1name`列で突合せる方式。**Excel出力だけはこうぢさん
+  依頼の例外レイアウトで1シート("ipsec_vpn")に統合**し、phase1トンネルを
+  列方向に並べ、対応するphase2をその列の下に縦積み表示する(`core/excel/
+  layouts.render_paired_vertical_group()`、同じ親に複数のphase2が対応する
+  場合は1行空けて続ける)。phase2の`src`/`dst`はaddr-typeに応じて
+  `-name`/`-subnet`から派生。詳細は両ファイルのヘッダコメント、
+  psksecretを表示列から除外した理由、Excelレイアウト例外の設計を参照)。
 
 ## CLIの使い方
 
@@ -130,8 +134,9 @@ print(result.hostname, result.excel_path, result.json_paths)
 (無い場合、該当するテスト・検証スクリプトは自動的にskip/エラーになる)。
 
 - `tests/test_parse.py` — 文法・パーサーのpytestテスト(12件)。
-- `tests/test_pipeline.py` — CLI/pipeline/JSON出力のpytestテスト(12件、
-  system_interfaceのvdom振り分け・vpn_ipsec phase1/phase2の突合せ検証含む)。
+- `tests/test_pipeline.py` — CLI/pipeline/JSON出力のpytestテスト(13件、
+  system_interfaceのvdom振り分け・vpn_ipsec phase1/phase2の突合せ検証
+  (JSON側)・vpn_ipsecのExcel出力が1シートに統合されることの検証含む)。
   ```
   uv run pytest tools/config_parser -v
   ```
@@ -163,4 +168,11 @@ print(result.hostname, result.excel_path, result.json_paths)
   また`psksecret`(暗号化済みPSK)はセキュリティ上の判断で表示列から除外して
   いる。実機の拠点間接続サンプルが手に入り次第、あらためて確認・拡張すること
   (詳細は`vpn_ipsec_phase1.py`/`vpn_ipsec_phase2.py`のコメント参照)。
+  **2026-10-22追記**: Excel出力のレイアウトを、こうぢさん提示のサンプル
+  (`ipsec_vpn_image.xlsx`)に合わせた「1シート統合・phase1を列方向に並べ、
+  対応するphase2をその下に縦積み」という例外レイアウトに変更済み
+  (`core/excel/layouts.render_paired_vertical_group()`、実サンプルは
+  phase1:phase2が1:1のため「同じ親に複数のphase2」のケースは合成データで
+  のみ検証済み。実際に1つのphase1トンネルに複数のphase2が設定された
+  サンプルが手に入れば、あらためて確認すること)。
 - 詳細は Claude Project の `architecture/config-parser-design.md` を参照。

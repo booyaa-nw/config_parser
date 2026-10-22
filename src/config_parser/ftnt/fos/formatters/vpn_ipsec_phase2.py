@@ -5,8 +5,17 @@
 # 背景・経緯の詳細はvpn_ipsec_phase1.pyのヘッダコメントを参照。
 #
 # `phase1name`列でどのphase1トンネル(vpn_ipsec_phase1.pyの`name`)に
-# 対応するかを突合せできるようにしている(1シートに合成はせず、
-# firewall_vip/vipgrpと同様の「別シート+キーで関連付け」方式)。
+# 対応するかを突合せできるようにしている(JSON出力上は従来どおり
+# firewall_vip/vipgrpと同様の「別カテゴリ+キーで関連付け」方式)。
+#
+# **2026-10-22追記(Excelレイアウトの例外対応)**: Excel出力に限り
+# vpn_ipsec_phase1.pyと1シートに統合する(`__layout__.excel_sheet_group`
+# が両ファイルで"ipsec_vpn"共通のため、core/excel/writer.pyが自動で
+# 1シートにまとめる)。経緯・詳細はvpn_ipsec_phase1.pyのヘッダコメントを
+# 参照。本ファイル側は`layout: "paired_vertical_child"`、`link_key:
+# "phase1name"`(=このFormatterのどのフィールドが親(phase1)の
+# `link_key`と突合せるキーか)を宣言するだけで、レンダリング自体は
+# core/excel/layouts.render_paired_vertical_group()に一本化されている。
 #
 # **src/dstの派生ロジック(firewall_addressのaddress集約と同じ考え方)**:
 # FortiOSの`phase2-interface`は`src-addr-type`/`dst-addr-type`の値に応じて
@@ -31,16 +40,23 @@ from config_parser.core.formatter_base import CategoryFormatter
 
 class VpnIpsecPhase2(CategoryFormatter):
     field_names = {
-        "__layout__":    {"layout": "simple", "sheetname": "ipsec_phase2", "global": False},
-        "name":          {"width": 25, "default_value": []},
-        "phase1name":    {"width": 25, "default_value": []},
-        "proposal":      {"width": 35, "default_value": []},
-        "dhgrp":         {"width": 15, "default_value": ["14"]},
-        "src-addr-type": {"width": 10, "default_value": ["subnet"]},
-        "src":           {"width": 25, "default_value": []},
-        "dst-addr-type": {"width": 10, "default_value": ["subnet"]},
-        "dst":           {"width": 25, "default_value": []},
-        "comments":      {"width": 35, "default_value": []},
+        "__layout__": {
+            "layout": "paired_vertical_child",
+            "sheetname": "ipsec_phase2",  # JSON側のカテゴリキーは変更なし
+            "excel_sheet_group": "ipsec_vpn",
+            "global": False,
+            "header_width": 25, "value_width": 50,
+            "link_key": "phase1name",
+        },
+        "name":          {"default_value": []},
+        "phase1name":    {"default_value": []},
+        "proposal":      {"default_value": []},
+        "dhgrp":         {"default_value": ["14"]},
+        "src-addr-type": {"default_value": ["subnet"]},
+        "src":           {"default_value": []},
+        "dst-addr-type": {"default_value": ["subnet"]},
+        "dst":           {"default_value": []},
+        "comments":      {"default_value": []},
     }
 
     # 生コンフィグ側にしか存在しない、派生計算専用のキー(表示列ではないのでfield_namesには入れない)

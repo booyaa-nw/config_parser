@@ -106,6 +106,103 @@ def render_vertical(ws, header_row: int, records: list[dict], field_names: dict)
 # (`{'subtable': {'field_names': {...}}}`)に持たせることで、カテゴリ名を
 # 一切知らない汎用レンダラーにした。
 # ---------------------------------------------------------------------
+@register_layout("paired_vertical")
+@register_layout("paired_vertical_child")
+def _paired_vertical_guard(ws, header_row: int, records: list[dict], field_names: dict) -> int:
+    """paired_vertical/paired_vertical_childは、単体カテゴリ用の
+    render()経由(1 Formatter=1シートの通常経路)では描画できない
+    (親カテゴリの列配置を、子カテゴリ単独では知り得ないため)。
+    render_paired_vertical_group()を使う core/excel/writer.py の
+    グルーピング経路(__layout__.excel_sheet_groupが一致する連続した
+    Formatter群)を必ず経由する前提のlayoutなので、誤ってrender()に
+    直接渡された場合はここで明示的に失敗させる。"""
+    raise ValueError(
+        f"layout={field_names['__layout__']['layout']!r} は "
+        "ExcelWriterの excel_sheet_group によるグルーピング経路専用です。"
+        "render_paired_vertical_group() を使ってください。"
+    )
+
+
+def render_paired_vertical_group(ws, header_row: int, parts: list[tuple[list[dict], dict]]) -> int:
+    """`__layout__.excel_sheet_group`が同じ複数のFormatter出力(parts、
+    [(records, field_names), ...]、先頭が親=primary、以降が子=children)を
+    1シートにまとめて描画する。
+
+    こうぢさん依頼のvpn_ipsec_phase1/phase2専用の「例外レイアウト」として
+    新設(2026-10-22、サンプル`ipsec_vpn_image.xlsx`に準拠)したが、
+    category名には一切依存せず、field_names側の宣言
+    (`link_key`/`header_width`/`value_width`/`sheetname`)だけで動くため、
+    「親レコードを列方向に並べ、各列の下に紐づく子レコードを縦積みする」
+    という形が他カテゴリでも必要になれば流用できる。
+
+    親・子それぞれが「自分の`sheetname`を見出しとして1行書き、1行空けて
+    データを書き始める」という同じ枠組みで並ぶ(サンプル画像の
+    "root ipsec_phase1"/"root ipsec_phase2"の見出し行がこれにあたる)。
+    header_rowはシート全体の見出し(1行目)の直後、つまり親セクションの
+    見出し行そのもの(シート全体の見出しとの間は空けない)。
+
+    親(parts[0]): virticalと同じ「フィールド=行、レコード=列」表示
+    (列は record 1件につき2列: フィールド名列+値列)。
+    子(parts[1:]): 親ブロックの下に(2行空けて)配置し、親の`link_key`の
+    値と自分の`link_key`の値が一致するレコードだけを、対応する親の列の下に
+    積む。1つの親に対応する子レコードが複数件ある場合は、1行空けて下に
+    追記していく(こうぢさん指定)。対応する子が無い親の列は、そのブロックでは
+    空欄のままにする(サンプル画像のtest_ipsec1/test_remote01で確認した
+    挙動と同じ)。
+    """
+    primary_records, primary_field_names = parts[0]
+    primary_layout = primary_field_names["__layout__"]
+    header_width = primary_layout.get("header_width")
+    value_width = primary_layout.get("value_width")
+    link_key = primary_layout["link_key"]
+    primary_fields = _display_fields(primary_field_names)
+
+    row = header_row
+    style.write_sheet_title(ws, row, 1, primary_layout["sheetname"])
+    row += 2  # 見出し行の次に1行空けてデータを書き始める
+
+    for col_group, record in enumerate(primary_records):
+        col = col_group * 2 + 1
+        for r, field_name in enumerate(primary_fields, start=row):
+            style.write_header_cell(ws, r, col, field_name, header_width)
+            style.write_cell(ws, r, col + 1, style.cell_text(record.get(field_name)), width=value_width)
+    row = row + len(primary_fields) - 1
+
+    for child_records, child_field_names in parts[1:]:
+        child_layout = child_field_names["__layout__"]
+        child_link_key = child_layout["link_key"]
+        child_fields = _display_fields(child_field_names)
+
+        row += 3  # 直前セクションの最終データ行との間に2行空けてから見出し行
+        style.write_sheet_title(ws, row, 1, child_layout["sheetname"])
+        row += 2  # 見出し行の次に1行空けてデータを書き始める
+
+        # 親レコードごとに、自分のlink_key値と一致する子レコードを、
+        # 元の並び順を保ったまま集めておく。
+        children_by_primary = [
+            [c for c in child_records if c.get(child_link_key) == p.get(link_key)]
+            for p in primary_records
+        ]
+        max_depth = max((len(m) for m in children_by_primary), default=0)
+
+        block_row = row
+        for depth in range(max_depth):
+            for col_group, matched in enumerate(children_by_primary):
+                if depth >= len(matched):
+                    continue
+                child_record = matched[depth]
+                col = col_group * 2 + 1
+                for r, field_name in enumerate(child_fields, start=block_row):
+                    style.write_header_cell(ws, r, col, field_name, header_width)
+                    style.write_cell(ws, r, col + 1, style.cell_text(child_record.get(field_name)), width=value_width)
+            block_row += len(child_fields)
+            if depth < max_depth - 1:
+                block_row += 1  # 同じ親に対する2件目以降の子は1行空けて続ける(こうぢさん指定)
+        row = block_row - 1 if max_depth else row - 1
+
+    return row
+
+
 @register_layout("composite")
 def render_composite(ws, header_row: int, records: list[dict], field_names: dict) -> int:
     row = render_vertical(ws, header_row, records, field_names)
